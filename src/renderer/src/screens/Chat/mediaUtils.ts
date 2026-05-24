@@ -59,7 +59,15 @@ export interface MediaToken {
 }
 
 export type MediaSegment =
-  | { type: "text"; value: string }
+  | {
+      type: "text";
+      value: string;
+      /** Character offset of this segment in the original content string.
+       *  Used as a stable React key during streaming — `start` doesn't shift
+       *  when a later MEDIA: token appears mid-stream, whereas an array
+       *  index would. (Follow-up item from PR #303 review.) */
+      start: number;
+    }
   | {
       type: "media";
       token: MediaToken;
@@ -69,6 +77,9 @@ export type MediaSegment =
       /** `media-token` — explicit MEDIA: tag, rendered eagerly.
        *  `bare-path` — inferred path, rendered only once verified to exist. */
       source: "media-token" | "bare-path";
+      /** Character offset of this segment in the original content string —
+       *  same stability rationale as the text segment's `start`. */
+      start: number;
     };
 
 interface Hit {
@@ -171,18 +182,23 @@ export function parseMediaTokens(content: string): MediaSegment[] {
   let last = 0;
   for (const h of hits) {
     if (h.start > last) {
-      segments.push({ type: "text", value: content.slice(last, h.start) });
+      segments.push({
+        type: "text",
+        value: content.slice(last, h.start),
+        start: last,
+      });
     }
     segments.push({
       type: "media",
       token: h.token,
       raw: h.raw,
       source: h.source,
+      start: h.start,
     });
     last = h.end;
   }
   if (last < content.length) {
-    segments.push({ type: "text", value: content.slice(last) });
+    segments.push({ type: "text", value: content.slice(last), start: last });
   }
   return segments;
 }
@@ -193,10 +209,19 @@ export function hasMediaTokens(content: string): boolean {
   return MEDIA_RE.test(content);
 }
 
-/** Classify a plain image src (used by the markdown `img` override). */
+/**
+ * Classify a plain `src` from a markdown `![alt](src)` image syntax. The
+ * markdown image syntax doesn't actually guarantee an image — the agent
+ * may emit `![alt](file.pdf)` or `![alt](report.csv)`. Without checking
+ * the extension here the caller would unconditionally try to render it
+ * via `MediaImage` → `readMediaAsDataUrl` returns `null` (no MIME map
+ * entry) → the user sees an "image failed to load" error. Honour the
+ * extension so non-image markdown images can fall through to the
+ * download-chip path (follow-up item from PR #303 review).
+ */
 export function describeImageSrc(src: string): MediaToken {
   const trimmed = src.trim();
   const isUrl = /^https?:\/\//i.test(trimmed);
   const name = trimmed.split(/[\\/]/).filter(Boolean).pop() || trimmed;
-  return { src: trimmed, isUrl, isImage: true, name };
+  return { src: trimmed, isUrl, isImage: IMAGE_EXT.test(trimmed), name };
 }

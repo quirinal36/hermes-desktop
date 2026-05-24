@@ -3,7 +3,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Copy } from "lucide-react";
 import { useI18n } from "./useI18n";
-import { MediaImage } from "./MediaImage";
+import { MediaImage, DownloadChip } from "./MediaImage";
 import { describeImageSrc } from "../screens/Chat/mediaUtils";
 
 // Lazy-load the heavy syntax highlighter — only imported when a code block renders
@@ -155,10 +155,18 @@ const AgentMarkdown = memo(function AgentMarkdown({
             {children}
           </a>
         ),
-        img: ({ src }) =>
-          typeof src === "string" && src.length > 0 ? (
-            <MediaImage token={describeImageSrc(src)} />
-          ) : null,
+        img: ({ src }) => {
+          if (typeof src !== "string" || src.length === 0) return null;
+          // ![alt](file.pdf) parses as a markdown image but isn't an image —
+          // route those to the download chip instead of letting MediaImage
+          // try to load a non-image MIME and fail. (Follow-up from #303.)
+          const token = describeImageSrc(src);
+          return token.isImage ? (
+            <MediaImage token={token} />
+          ) : (
+            <DownloadChip token={token} />
+          );
+        },
         code: ({ className, children, ...props }) => {
           const isInline =
             !className &&

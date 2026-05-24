@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import icon from "../../assets/icon.png";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { AttachmentChip } from "../../components/AttachmentChip";
@@ -69,6 +69,21 @@ export const MessageRow = memo(function MessageRow({
     APPROVAL_RE.test(msg.content);
   const hasAttachments = !!msg.attachments && msg.attachments.length > 0;
 
+  // MessageRow is wrapped in memo() but still re-renders on any prop change
+  // (e.g. isLoading toggling at the end of a stream), and `parseMediaTokens`
+  // runs a full regex pipeline. Cache the result against the message content
+  // so a long conversation doesn't reparse every row on every render.
+  // Only agent bubbles need media parsing — user bubbles render content
+  // verbatim — so this is gated on the role to skip the work entirely for
+  // user rows. (Follow-up item from PR #303 review.)
+  const segments = useMemo(
+    () =>
+      msg.role === "agent" && msg.content
+        ? parseMediaTokens(msg.content)
+        : null,
+    [msg.role, msg.content],
+  );
+
   return (
     <div className={`chat-message chat-message-${msg.role}`}>
       {msg.role === "user" ? (
@@ -89,24 +104,29 @@ export const MessageRow = memo(function MessageRow({
           </div>
         )}
         {msg.content &&
-          (msg.role === "agent" ? (
-            parseMediaTokens(msg.content).map((segment, i) =>
-              segment.type === "text" ? (
-                segment.value.trim() ? (
-                  <AgentMarkdown key={i}>{segment.value}</AgentMarkdown>
-                ) : null
-              ) : (
-                <MediaSegmentView
-                  key={i}
-                  token={segment.token}
-                  raw={segment.raw}
-                  source={segment.source}
-                />
-              ),
-            )
-          ) : (
-            msg.content
-          ))}
+          (msg.role === "agent" && segments
+            ? segments.map((segment) =>
+                segment.type === "text" ? (
+                  segment.value.trim() ? (
+                    // Keyed on the segment's character offset rather than its
+                    // array index — a MEDIA: token appearing mid-stream shifts
+                    // every subsequent index, which would otherwise re-mount
+                    // each downstream MediaSegmentView and re-fire its
+                    // `mediaFileExists` probe.
+                    <AgentMarkdown key={`t-${segment.start}`}>
+                      {segment.value}
+                    </AgentMarkdown>
+                  ) : null
+                ) : (
+                  <MediaSegmentView
+                    key={`m-${segment.start}`}
+                    token={segment.token}
+                    raw={segment.raw}
+                    source={segment.source}
+                  />
+                ),
+              )
+            : msg.content)}
       </div>
       {showApprovalBar && (
         <div className="chat-approval-bar">

@@ -18,7 +18,7 @@ function media(segs: MediaSegment[]): Extract<MediaSegment, { type: "media" }> {
 describe("parseMediaTokens (issue #299)", () => {
   it("returns a single text segment when there is nothing to extract", () => {
     expect(parseMediaTokens("just a normal reply")).toEqual([
-      { type: "text", value: "just a normal reply" },
+      { type: "text", value: "just a normal reply", start: 0 },
     ]);
   });
 
@@ -27,7 +27,11 @@ describe("parseMediaTokens (issue #299)", () => {
     const segs = parseMediaTokens(
       "Here it is:\n\nMEDIA:C:\\Users\\pmos6\\cat.png",
     );
-    expect(segs[0]).toEqual({ type: "text", value: "Here it is:\n\n" });
+    expect(segs[0]).toEqual({
+      type: "text",
+      value: "Here it is:\n\n",
+      start: 0,
+    });
     expect(segs[1]).toMatchObject({
       type: "media",
       source: "media-token",
@@ -90,14 +94,23 @@ describe("parseMediaTokens (issue #299)", () => {
   // ── Inline bare paths (mid-sentence) ───────────────────
   it("detects an inline absolute path mentioned mid-sentence", () => {
     const segs = parseMediaTokens("I saved it to C:\\Users\\me\\x.pdf today.");
-    expect(segs[0]).toEqual({ type: "text", value: "I saved it to " });
+    expect(segs[0]).toEqual({
+      type: "text",
+      value: "I saved it to ",
+      start: 0,
+    });
     expect(media(segs)).toMatchObject({
       type: "media",
       source: "bare-path",
       raw: "C:\\Users\\me\\x.pdf",
       token: { src: "C:\\Users\\me\\x.pdf", isImage: false },
     });
-    expect(segs[segs.length - 1]).toEqual({ type: "text", value: " today." });
+    expect(segs[segs.length - 1]).toEqual({
+      type: "text",
+      value: " today.",
+      // 14 ("I saved it to ") + 17 ("C:\\Users\\me\\x.pdf") = 31.
+      start: 31,
+    });
   });
 
   it("detects an inline POSIX absolute path", () => {
@@ -187,6 +200,8 @@ describe("parseMediaTokens (issue #299)", () => {
     expect(segs[segs.length - 1]).toEqual({
       type: "text",
       value: "\n\nEnjoy!",
+      // "MEDIA:/tmp/a.png" is 16 chars — trailing text begins at offset 16.
+      start: 16,
     });
   });
 
@@ -196,11 +211,51 @@ describe("parseMediaTokens (issue #299)", () => {
     expect(hasMediaTokens("no media")).toBe(false);
   });
 
-  it("describeImageSrc classifies a plain src", () => {
+  it("describeImageSrc classifies a plain image src", () => {
     expect(describeImageSrc("https://x.test/p.png")).toMatchObject({
       isUrl: true,
       isImage: true,
       name: "p.png",
     });
+  });
+
+  it("describeImageSrc sets isImage:false for a non-image src so the caller can route to DownloadChip", () => {
+    // markdown allows ![alt](file.pdf) — that parses as an image tag but the
+    // actual file is a PDF. Hardcoding isImage:true here caused MediaImage
+    // to try to load it as an image and surface "could not load file.pdf"
+    // to the user. Honouring IMAGE_EXT lets the caller route non-images to
+    // the download chip instead. (Follow-up from PR #303 review.)
+    expect(describeImageSrc("./report.pdf")).toMatchObject({
+      isImage: false,
+      name: "report.pdf",
+    });
+    expect(describeImageSrc("https://x.test/data.csv")).toMatchObject({
+      isUrl: true,
+      isImage: false,
+      name: "data.csv",
+    });
+  });
+
+  it("emits stable `start` offsets on every segment for use as React keys", () => {
+    // The map() in MessageRow used the array index as key. When a MEDIA:
+    // token appears mid-stream, every subsequent segment shifts index,
+    // re-mounting downstream MediaSegmentView instances and re-firing
+    // their `mediaFileExists` probes. Keying on `start` instead is
+    // streaming-stable. (Follow-up from PR #303 review.)
+    const segs = parseMediaTokens(
+      "intro MEDIA:/tmp/a.png tail MEDIA:/tmp/b.png end",
+    );
+    // Every segment carries its origin offset.
+    for (const s of segs) {
+      expect(typeof s.start).toBe("number");
+      expect(s.start).toBeGreaterThanOrEqual(0);
+    }
+    // Offsets are strictly increasing across the segment stream.
+    for (let i = 1; i < segs.length; i++) {
+      expect(segs[i].start).toBeGreaterThan(segs[i - 1].start);
+    }
+    // Used as React keys, the values are unique.
+    const keys = segs.map((s) => `${s.type}-${s.start}`);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
