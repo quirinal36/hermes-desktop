@@ -110,6 +110,26 @@ function Layout({
     window.hermesAPI.isRemoteOnlyMode().then(setRemoteMode);
   }, [view]);
 
+  // Restore the last-activated profile on launch. The main process persists it
+  // in ~/.hermes/active_profile (via `hermes profile use`), so the desktop
+  // should reopen on that profile rather than always resetting to "default".
+  useEffect(() => {
+    let cancelled = false;
+    window.hermesAPI
+      .listProfiles()
+      .then((profiles) => {
+        if (cancelled) return;
+        const active = profiles.find((p) => p.isActive);
+        if (active && active.name !== "default") setActiveProfile(active.name);
+      })
+      .catch(() => {
+        /* fall back to the default profile */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Auto-update state
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
   const [updateState, setUpdateState] = useState<

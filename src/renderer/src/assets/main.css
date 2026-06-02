@@ -1834,6 +1834,13 @@ body {
   align-self: flex-start;
 }
 
+/* Continuation rows of a turn (thinking/tool rows + answer that share one
+   avatar). Pull them closer to the row above so the turn reads as one block
+   rather than several spaced-out bubbles. */
+.chat-message--grouped {
+  margin-top: -8px;
+}
+
 .chat-avatar {
   width: 28px;
   height: 28px;
