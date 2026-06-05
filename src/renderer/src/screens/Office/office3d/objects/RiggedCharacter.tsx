@@ -5,8 +5,10 @@ import * as THREE from "three";
 import { clone as SkeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { RenderAgent } from "../core/types";
 import bizManGlbUrl from "../assets/biz_man.glb?url";
+import manGlbUrl from "../assets/man.glb?url";
 
 export const RIGGED_EMPLOYEE_URL = bizManGlbUrl;
+export const RIGGED_MAN_URL = manGlbUrl;
 
 const DEFAULT_AGENT_HEIGHT = 0.65;
 
@@ -23,11 +25,15 @@ function findAnimationByName(
   target: string,
 ): number | undefined {
   const wanted = target.toLowerCase();
-  // Clip names are often prefixed by the armature (e.g. "Armature|Walk"), so
-  // compare against the trailing segment after the last "|".
+  // Clip names are often prefixed by the armature (e.g. "Armature|Walk") and/or
+  // namespaced (e.g. "Man_Walk", "Man_Sitting"). Compare against the trailing
+  // segment after the last "|", then match either the whole leaf or one of its
+  // tokens (split on non-alphanumerics) so "Man_Walk" matches "walk".
   const idx = names.findIndex((n) => {
-    const leaf = n.split("|").pop() ?? n;
-    return leaf.toLowerCase() === wanted;
+    const leaf = (n.split("|").pop() ?? n).toLowerCase();
+    if (leaf === wanted) return true;
+    const tokens = leaf.split(/[^a-z0-9]+/).filter(Boolean);
+    return tokens.includes(wanted);
   });
   return idx >= 0 ? idx : undefined;
 }
@@ -38,12 +44,15 @@ export function RiggedCharacter({
   agentsRef,
   agentLookupRef,
   scaleMultiplier = 1.45,
+  tint = null,
 }: {
   url: string;
   agentId: string;
   agentsRef: React.RefObject<RenderAgent[]>;
   agentLookupRef?: React.RefObject<Map<string, RenderAgent>>;
   scaleMultiplier?: number;
+  /** Recolours the model's materials toward this colour (per-instance). */
+  tint?: string | null;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF(url);
@@ -52,6 +61,7 @@ export function RiggedCharacter({
   const clonedScene = useMemo(() => {
     const cloned = SkeletonClone(scene);
     cloned.updateMatrixWorld(true);
+    const tintColor = tint ? new THREE.Color(tint) : null;
     // Skinned meshes frequently get incorrectly frustum-culled because their
     // bounding sphere stays at the rig origin, making the avatar vanish.
     cloned.traverse((child) => {
@@ -59,10 +69,28 @@ export function RiggedCharacter({
         child.frustumCulled = false;
         child.castShadow = true;
         child.receiveShadow = true;
+        // SkeletonClone shares material references with the cached GLTF scene,
+        // so tinting in place would recolour every agent using this model.
+        // Clone the materials per instance, then lerp toward the agent's tint.
+        if (tintColor) {
+          const mats = Array.isArray(child.material)
+            ? child.material
+            : [child.material];
+          const tinted = mats.map((material) => {
+            const next = (
+              material as THREE.Material
+            ).clone() as THREE.Material & {
+              color?: THREE.Color;
+            };
+            if (next.color) next.color.lerp(tintColor, 0.6);
+            return next;
+          });
+          child.material = Array.isArray(child.material) ? tinted : tinted[0];
+        }
       }
     });
     return cloned;
-  }, [scene]);
+  }, [scene, tint]);
 
   const { autoScale, bboxMin, bboxCenter } = useMemo(() => {
     clonedScene.updateWorldMatrix(true, true);
@@ -162,3 +190,4 @@ export function RiggedCharacter({
 }
 
 useGLTF.preload(bizManGlbUrl);
+useGLTF.preload(manGlbUrl);

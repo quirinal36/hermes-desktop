@@ -41,4 +41,6 @@ export type AgentModelProps = {
   suppressSpeechBubble?: boolean;
   /** If set, renders a rigged GLB model instead of the procedural avatar. */
   riggedModelUrl?: string;
+  /** Recolours the rigged GLB model toward this colour (per-instance). */
+  riggedModelTint?: string | null;
 };

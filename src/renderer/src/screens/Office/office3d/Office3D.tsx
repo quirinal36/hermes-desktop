@@ -4,7 +4,7 @@ import { OrbitControls, Environment, Lightformer } from "@react-three/drei";
 import { configureTextBuilder } from "troika-three-text";
 import * as THREE from "three";
 import { AgentModel } from "./objects/agents";
-import { RIGGED_EMPLOYEE_URL } from "./objects/RiggedCharacter";
+import { RIGGED_EMPLOYEE_URL, RIGGED_MAN_URL } from "./objects/RiggedCharacter";
 import { Workstations, FurniturePieces } from "./objects/furniture";
 import {
   buildWorkstations,
@@ -284,8 +284,9 @@ function AgentsLayer({
           showSpeech={selectedId === agent.id}
           speechText={selectedId === agent.id ? `Hi, I'm ${agent.name}` : null}
           riggedModelUrl={
-            agent.position === "ceo" ? RIGGED_EMPLOYEE_URL : undefined
+            agent.position === "ceo" ? RIGGED_EMPLOYEE_URL : RIGGED_MAN_URL
           }
+          riggedModelTint={agent.position === "ceo" ? null : agent.color}
         />
       ))}
     </>

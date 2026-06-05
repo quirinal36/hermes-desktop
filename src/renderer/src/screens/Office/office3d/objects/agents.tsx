@@ -58,6 +58,7 @@ export const AgentModel = memo(function AgentModel({
   speechText = null,
   suppressSpeechBubble = false,
   riggedModelUrl,
+  riggedModelTint = null,
 }: AgentModelProps) {
   const groupRef = useRef<THREE.Group>(null);
   const leftArmRef = useRef<THREE.Group>(null);
@@ -1174,6 +1175,7 @@ export const AgentModel = memo(function AgentModel({
           agentId={agentId}
           agentsRef={agentsRef}
           agentLookupRef={agentLookupRef}
+          tint={riggedModelTint}
         />
       )}
       {!activeSpeechBubble && nameplateText ? (
