@@ -1,6 +1,11 @@
 import posthog from "posthog-js";
 
-const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY || "";
+// Treat the .env.example placeholder as "no key" so forks that copy
+// .env.example verbatim don't accidentally enable analytics (which then
+// gets blocked by CSP and spams the console with failed retries).
+const PLACEHOLDER_KEY = "phc_your_project_key_here";
+const rawPosthogKey = import.meta.env.VITE_POSTHOG_KEY || "";
+const POSTHOG_KEY = rawPosthogKey === PLACEHOLDER_KEY ? "" : rawPosthogKey;
 const POSTHOG_HOST =
   import.meta.env.VITE_POSTHOG_HOST || "https://eu.i.posthog.com";
 
